@@ -1,0 +1,4 @@
+name: DTBotsAPI
+version: ${project.version}
+main: su.dreamtime.dtbotsapi.plugin.MainBungee
+author: DreamTime_Team

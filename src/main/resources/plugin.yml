@@ -1,0 +1,6 @@
+name: DTBotsAPI
+version: ${project.version}
+main: su.dreamtime.dtbotsapi.plugin.MainPaper
+api-version: 1.13
+load: STARTUP
+authors: [SteveGrKek, BuseSo, DreamTime_Team]
