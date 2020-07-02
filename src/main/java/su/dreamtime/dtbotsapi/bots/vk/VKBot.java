@@ -5,7 +5,6 @@ import su.dreamtime.dtbotsapi.bots.common.BotClient;
 import su.dreamtime.dtbotsapi.commands.common.Command;
 import su.dreamtime.dtbotsapi.util.JsonParser;
 
-import java.net.SocketException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -38,7 +37,7 @@ public class VKBot extends BotClient {
         }
     }
 
-    public void createCommand(String cmd, VkCommandExecutor executor) {
+    protected void createCommand(String cmd, VkCommandExecutor executor) {
         commands.put(cmd, executor);
         Map<String, String> data = new HashMap<>();
         data.put("hash", hash);
@@ -58,10 +57,6 @@ public class VKBot extends BotClient {
 
     public String getHash() {
         return hash;
-    }
-
-    public void setHash(String hash) {
-        this.hash = hash;
     }
 
     @Override

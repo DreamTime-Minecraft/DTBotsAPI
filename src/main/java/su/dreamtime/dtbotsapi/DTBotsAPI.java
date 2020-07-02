@@ -1,14 +1,11 @@
 package su.dreamtime.dtbotsapi;
 
-import net.md_5.bungee.api.plugin.Plugin;
-import org.bukkit.plugin.java.JavaPlugin;
 import su.dreamtime.dtbotsapi.bots.common.BotClient;
 import su.dreamtime.dtbotsapi.plugin.MainBungee;
 import su.dreamtime.dtbotsapi.plugin.MainPaper;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -53,7 +50,12 @@ public final class DTBotsAPI {
      * НЕ ИСПОЛЬЗОВАТЬ ЭТОТ МЕТОД! Он только для API!
      */
     public static void destroy() {
-        clients.forEach((client)->client.close(false));
+        clients.forEach((client)-> {
+            try {
+                client.close(false);
+                // Чтобы нас не выкинуло из цикла, добавляем катч
+            } catch (Exception e) {e.printStackTrace();}
+        });
         clients.clear();
     }
 

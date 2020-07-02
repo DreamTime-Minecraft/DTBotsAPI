@@ -26,8 +26,6 @@ public abstract class BotClient extends Thread implements AutoCloseable {
     private BufferedReader in;
     protected String name;
 
-    private boolean close;
-
     public BotClient(String name, String remoteIp, int remotePort){
         this.name = name;
         this.remoteIp = remoteIp;
@@ -192,7 +190,7 @@ public abstract class BotClient extends Thread implements AutoCloseable {
         return sendRequest(new Command(command, null));
     }
 
-    /* Other owerriden and protected methods */
+    /* Other overridden and protected methods */
 
     @Override
     public final void close() {
@@ -208,17 +206,19 @@ public abstract class BotClient extends Thread implements AutoCloseable {
                     socket.close();
                 }
                 this.stop();
-                if (messageLock.isLocked()) {
-                    messageLock.unlock();
-                }
                 if (removeClient) {
                     DTBotsAPI.removeClient(this);
                 }
                 DTBotsAPI.getLogger().info("this client " + this + " was closed!");
             } catch (IOException e) {
                 e.printStackTrace();
-            } catch (ConcurrentModificationException | IllegalMonitorStateException ignored) {
-
+            } catch (ConcurrentModificationException  ignored) { }
+            finally {
+                try {
+                    if (messageLock.isLocked()) {
+                        messageLock.unlock();
+                    }
+                } catch (IllegalMonitorStateException ignored) {}
             }
         }
     }
