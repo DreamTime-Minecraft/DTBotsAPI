@@ -1,5 +1,6 @@
 package su.dreamtime.dtbotsapi.bots.common;
 
+import net.md_5.bungee.api.scheduler.ScheduledTask;
 import su.dreamtime.dtbotsapi.DTBotsAPI;
 import su.dreamtime.dtbotsapi.commands.common.Command;
 import su.dreamtime.dtbotsapi.commands.common.CommandListener;
@@ -13,23 +14,48 @@ import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
-public abstract class BotClient extends Thread implements AutoCloseable {
+public abstract class BotClient implements AutoCloseable, Runnable {
     protected String remoteIp;
     protected int remotePort;
     protected String localIp;
     protected int localPort;
-    protected Socket socket;
-    private ReentrantLock messageLock = new ReentrantLock();
+    private Socket socket;
+    private ReentrantLock messageLock;
+    private ReentrantLock sendLock;
     private BufferedWriter out;
     private BufferedReader in;
     protected String name;
+    private ScheduledTask bungeeTask;
 
+    private Task task;
+    private final AtomicBoolean isConnecting;
     public BotClient(String name, String remoteIp, int remotePort){
         this.name = name;
         this.remoteIp = remoteIp;
         this.remotePort = remotePort;
+        messageLock = new ReentrantLock();
+        sendLock = new ReentrantLock();
+
+        switch (DTBotsAPI.getBase()) {
+            case BUNGEE: {
+                task = new BungeeTask();
+                break;
+            }
+            case PAPER: {
+                task = new BukkitTask();
+                break;
+            }
+            case NONE:
+            default: {
+                task = new DefaultTask();
+                break;
+            }
+        }
+        isConnecting = new AtomicBoolean();
+        isConnecting.set(false);
     }
 
     public final void create(){
@@ -39,13 +65,13 @@ public abstract class BotClient extends Thread implements AutoCloseable {
             DTBotsAPI.getLogger().warning("Cannot connect to remote server");
             e.printStackTrace();
         }
-        start();
+        task.start(this);
         DTBotsAPI.addClient(this);
     }
 
     /* Connection */
 
-    private final void reconnect() {
+    private void reconnect() {
         try {
             if (socket != null && !socket.isClosed()) {
                 socket.close();
@@ -62,20 +88,28 @@ public abstract class BotClient extends Thread implements AutoCloseable {
         }
     }
 
-    private final void connect() throws Exception {
-        socket = new Socket(remoteIp, remotePort);
-        socket.setSoTimeout(10000);
-        this.localIp = socket.getLocalAddress().getHostName();
-        this.localPort = socket.getLocalPort();
-        DTBotsAPI.getLogger().info("this client " + this + " was connected to remote address " + remoteIp + ":" + remotePort);
-        out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-        in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-        sendRequest(new Command("CREATE_NAMED_CONNECTION", name));
-        onConnect();
+    private void connect() throws Exception {
+        synchronized (isConnecting) {
+            if (isConnecting.get()) {
+                return;
+            }
+            isConnecting.set(true);
+
+            socket = new Socket(remoteIp, remotePort);
+            socket.setSoTimeout(10000);
+            this.localIp = socket.getLocalAddress().getHostName();
+            this.localPort = socket.getLocalPort();
+            DTBotsAPI.getLogger().info("this client " + this + " was connected to remote address " + remoteIp + ":" + remotePort);
+            out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            sendRequest(new Command("CREATE_NAMED_CONNECTION", name));
+            onConnect();
+            isConnecting.set(false);
+        }
+
     }
 
     /* command and connection handler */
-
     @Override
     public final void run() {
         while (true) {
@@ -131,35 +165,39 @@ public abstract class BotClient extends Thread implements AutoCloseable {
     }
 
     public final void send(Command cmd) {
-        try {
-            messageLock.lock();
-            cmd.setResponse(false);
-            String out = JsonParser.toJson(cmd);
-
+        Runnable r = () -> {
+            sendLock.lock();
             try {
-                this.out.write(out + "\n");
-                this.out.flush();
-            }
-            catch (NullPointerException e){
-                reconnect();
-            }
+                cmd.setResponse(false);
+                String out = JsonParser.toJson(cmd);
 
-        } catch (IOException e) {
-            DTBotsAPI.getLogger().warning("BotClient. Cannot send command to remote server: " + e.getMessage());
-        } finally {
-            messageLock.unlock();
-        }
+                try {
+                    this.out.write(out + "\n");
+                    this.out.flush();
+                }
+                catch (NullPointerException e){
+                    task.runAsync(this::reconnect);
+                }
 
+            } catch (IOException e) {
+                DTBotsAPI.getLogger().warning("BotClient. Cannot send command to remote server: " + e.getMessage());
+            } finally {
+                sendLock.unlock();
+            }
+        };
+        task. runAsync(r);
     }
 
     public final Map<String, Object> sendRequest(Command cmd) {
+
+        sendLock.lock();
         try {
-            messageLock.lock();
             cmd.setResponse(true);
             String out = JsonParser.toJson(cmd);
             try {
                 this.out.write(out + "\n");
                 this.out.flush();
+                messageLock.lock();
                 String response = this.in.readLine();
 
                 if (response == null) {
@@ -167,7 +205,7 @@ public abstract class BotClient extends Thread implements AutoCloseable {
                 }
                 return JsonParser.parseJson(response, new HashMap<String, Object>().getClass());
             }catch (NullPointerException e){
-                reconnect();
+                task.runAsync(this::reconnect);
             }
         } catch (IOException e) {
             if (e instanceof SocketTimeoutException) {
@@ -176,7 +214,11 @@ public abstract class BotClient extends Thread implements AutoCloseable {
                 DTBotsAPI.getLogger().warning("BotClient. Cannot send request to remote server: " + e.getMessage());
             }
         } finally {
-            messageLock.unlock();
+            if (messageLock.isLocked()) {
+                messageLock.unlock();
+            }
+
+            sendLock.unlock();
         }
         return null;
 
@@ -205,7 +247,7 @@ public abstract class BotClient extends Thread implements AutoCloseable {
                 if (socket != null && !socket.isClosed()) {
                     socket.close();
                 }
-                this.stop();
+                task.stop();
                 if (removeClient) {
                     DTBotsAPI.removeClient(this);
                 }

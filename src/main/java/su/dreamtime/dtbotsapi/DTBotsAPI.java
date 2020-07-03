@@ -3,6 +3,7 @@ package su.dreamtime.dtbotsapi;
 import su.dreamtime.dtbotsapi.bots.common.BotClient;
 import su.dreamtime.dtbotsapi.plugin.MainBungee;
 import su.dreamtime.dtbotsapi.plugin.MainPaper;
+import su.dreamtime.dtbotsapi.util.BaseType;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -16,19 +17,22 @@ public final class DTBotsAPI {
     private static String defaultIp = DEF_IP;
     private static int defaultPort = DEF_PORT;
     private static List<BotClient> clients = Collections.synchronizedList(new ArrayList<>());
-
+    private static BaseType base;
     /**
      * НЕ ИСПОЛЬЗОВАТЬ ЭТОТ МЕТОД! Он только для API!
      */
     public static void init(Object parentPlugin) {
         if (parentPlugin == null) {
             logger = Logger.getGlobal();
+            base = BaseType.NONE;
         }
         try {
             if (parentPlugin instanceof MainBungee) {
                 MainBungee bungee = (MainBungee) parentPlugin;
                 logger = bungee.getLogger();
+                base = BaseType.BUNGEE;
             } else {
+                base = BaseType.NONE;
                 logger = Logger.getGlobal();
             }
         } catch (NoClassDefFoundError | Exception e) {
@@ -36,11 +40,14 @@ public final class DTBotsAPI {
                 if (parentPlugin instanceof MainPaper) {
                     MainPaper paper = (MainPaper) parentPlugin;
                     logger = paper.getLogger();
+                    base = BaseType.PAPER;
                 } else {
                     logger = Logger.getGlobal();
+                    base = BaseType.NONE;
                 }
             } catch (NoClassDefFoundError | Exception ex) {
                 logger = Logger.getGlobal();
+                base = BaseType.NONE;
             }
         }
 
@@ -99,5 +106,9 @@ public final class DTBotsAPI {
      */
     public static void removeClient(BotClient client) {
         clients.remove(client);
+    }
+
+    public static BaseType getBase() {
+        return base;
     }
 }
