@@ -14,6 +14,7 @@ import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -29,16 +30,17 @@ public abstract class BotClient implements AutoCloseable, Runnable {
     private BufferedReader in;
     protected String name;
     private ScheduledTask bungeeTask;
-
     private Task task;
     private final AtomicBoolean isConnecting;
+    private boolean close;
+
     public BotClient(String name, String remoteIp, int remotePort){
         this.name = name;
         this.remoteIp = remoteIp;
         this.remotePort = remotePort;
         messageLock = new ReentrantLock();
         sendLock = new ReentrantLock();
-
+        close = false;
         switch (DTBotsAPI.getBase()) {
             case BUNGEE: {
                 task = new BungeeTask();
@@ -113,6 +115,9 @@ public abstract class BotClient implements AutoCloseable, Runnable {
     @Override
     public final void run() {
         while (true) {
+            if (task.isCancelled()) {
+                break;
+            }
             try {
                 messageLock.lock();
                 String next;
@@ -122,14 +127,23 @@ public abstract class BotClient implements AutoCloseable, Runnable {
                         continue;
                     }
                     next = in.readLine();
+                    if (close) {
+                        break;
+                    }
                     if (next == null) {
                         throw new NullPointerException();
                     }
                 }
                 catch (NullPointerException e) {
+                    if (task.isCancelled()) {
+                        break;
+                    }
                     reconnect();
                     continue;
                 } catch (SocketException e) {
+                    if (task.isCancelled()) {
+                        break;
+                    }
                     if (e.getMessage().equalsIgnoreCase("Connection reset")) {
                         reconnect();
                     } else {
@@ -144,6 +158,9 @@ public abstract class BotClient implements AutoCloseable, Runnable {
                 }
 
             } catch (Exception e) {
+                if (task.isCancelled()) {
+                    break;
+                }
                 if (e instanceof SocketTimeoutException) {
 
                 } else {
@@ -176,6 +193,9 @@ public abstract class BotClient implements AutoCloseable, Runnable {
                     this.out.flush();
                 }
                 catch (NullPointerException e){
+                    if (task.isCancelled() || close) {
+                        return;
+                    }
                     task.runAsync(this::reconnect);
                 }
 
@@ -185,7 +205,11 @@ public abstract class BotClient implements AutoCloseable, Runnable {
                 sendLock.unlock();
             }
         };
-        task. runAsync(r);
+        if (close) {
+            r.run();
+        } else {
+            task.runAsync(r);
+        }
     }
 
     public final Map<String, Object> sendRequest(Command cmd) {
@@ -205,6 +229,9 @@ public abstract class BotClient implements AutoCloseable, Runnable {
                 }
                 return JsonParser.parseJson(response, new HashMap<String, Object>().getClass());
             }catch (NullPointerException e){
+                if (task.isCancelled() || close) {
+                    return null;
+                }
                 task.runAsync(this::reconnect);
             }
         } catch (IOException e) {
@@ -217,7 +244,6 @@ public abstract class BotClient implements AutoCloseable, Runnable {
             if (messageLock.isLocked()) {
                 messageLock.unlock();
             }
-
             sendLock.unlock();
         }
         return null;
@@ -241,13 +267,14 @@ public abstract class BotClient implements AutoCloseable, Runnable {
 
     public final void close(boolean removeClient) {
         try {
+            close = true;
             this.onClose();
         } finally {
             try {
+                task.stop();
                 if (socket != null && !socket.isClosed()) {
                     socket.close();
                 }
-                task.stop();
                 if (removeClient) {
                     DTBotsAPI.removeClient(this);
                 }
@@ -261,6 +288,7 @@ public abstract class BotClient implements AutoCloseable, Runnable {
                         messageLock.unlock();
                     }
                 } catch (IllegalMonitorStateException ignored) {}
+
             }
         }
     }

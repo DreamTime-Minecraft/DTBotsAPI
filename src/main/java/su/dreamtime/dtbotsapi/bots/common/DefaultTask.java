@@ -15,6 +15,7 @@ public class DefaultTask implements Task {
     public DefaultTask() {
 
         service = Executors.newSingleThreadScheduledExecutor();
+        threadPool = Executors.newScheduledThreadPool(4);
     }
     @Override
     public void start(Runnable runnable) {
@@ -23,7 +24,7 @@ public class DefaultTask implements Task {
 
     @Override
     public boolean isCancelled() {
-        return true;
+        return scheduledFuture.isCancelled();
     }
 
     @Override
@@ -36,6 +37,6 @@ public class DefaultTask implements Task {
 
     @Override
     public void runAsync(Runnable runnable) {
-        threadPool = Executors.newScheduledThreadPool(4);
+        threadPool.schedule(runnable, 0, TimeUnit.MILLISECONDS);
     }
 }
