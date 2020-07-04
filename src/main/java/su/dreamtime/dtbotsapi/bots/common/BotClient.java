@@ -14,7 +14,6 @@ import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -29,7 +28,6 @@ public abstract class BotClient implements AutoCloseable, Runnable {
     private BufferedWriter out;
     private BufferedReader in;
     protected String name;
-    private ScheduledTask bungeeTask;
     private Task task;
     private final AtomicBoolean isConnecting;
     private boolean close;
@@ -115,8 +113,8 @@ public abstract class BotClient implements AutoCloseable, Runnable {
     @Override
     public final void run() {
         while (true) {
-            if (task.isCancelled()) {
-                break;
+            if (task.isCancelled() || close) {
+                return;
             }
             try {
                 messageLock.lock();
@@ -141,8 +139,8 @@ public abstract class BotClient implements AutoCloseable, Runnable {
                     reconnect();
                     continue;
                 } catch (SocketException e) {
-                    if (task.isCancelled()) {
-                        break;
+                    if (task.isCancelled() || close) {
+                        return;
                     }
                     if (e.getMessage().equalsIgnoreCase("Connection reset")) {
                         reconnect();
@@ -154,12 +152,12 @@ public abstract class BotClient implements AutoCloseable, Runnable {
                 Command cmd = JsonParser.parseJson(next, Command.class);
 
                 if (cmd != null && cmd.name != null) {
-                    CommandListener.execute(this, cmd);
+                    task.runAsync(() -> CommandListener.execute(this, cmd));
                 }
 
             } catch (Exception e) {
-                if (task.isCancelled()) {
-                    break;
+                if (task.isCancelled() || close) {
+                    return;
                 }
                 if (e instanceof SocketTimeoutException) {
 

@@ -46,8 +46,14 @@ public class VKBot extends BotClient {
         send(new Command("CREATE_VK_COMMAND", jsonData));
     }
 
-    public VkCommandExecutor getCommand(String name) {
-        return commands.get(name);
+    public Map.Entry<String, VkCommandExecutor> getCommand(String cmdLine) {
+
+        for (Map.Entry<String, VkCommandExecutor> entry : commands.entrySet()) {
+            if (cmdLine.toLowerCase().startsWith(entry.getKey().toLowerCase())) {
+                return entry;
+            }
+        }
+        return null;
     }
 
     @Override

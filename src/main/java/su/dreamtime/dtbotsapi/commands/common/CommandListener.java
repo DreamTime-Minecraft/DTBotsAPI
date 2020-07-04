@@ -9,6 +9,7 @@ import su.dreamtime.dtbotsapi.util.JsonParser;
 import su.dreamtime.dtbotsapi.util.Util;
 
 import java.util.Arrays;
+import java.util.Map;
 
 public class CommandListener
 {
@@ -20,16 +21,17 @@ public class CommandListener
 
                     VkCommandData cmdData = JsonParser.parseJson(command.getData(), VkCommandData.class);
                     cmdData.setLine(Util.removeSpaces(cmdData.getLine()));
-                    String[] splittedLine = cmdData.getLine().split(" ");
-                    String cmdName = splittedLine[0];
-                    VkCommandExecutor executor = bot.getCommand(cmdName);
-                    if (executor != null) {
-                        String[] args = new String[0];
-                        if (splittedLine.length > 1) {
-                            args = Arrays.copyOfRange(splittedLine, 0, splittedLine.length);
+                    Map.Entry<String, VkCommandExecutor> entry = bot.getCommand(cmdData.getLine());
+                    String cmdName = entry.getKey();
+                    if (entry != null) {
+                        VkCommandExecutor executor = entry.getValue();
 
+                        String argsLine = cmdData.getLine().substring(cmdName.length());
+                        if (argsLine.startsWith(" ")) {
+                            argsLine = argsLine.substring(1);
                         }
-                        executor.execute(cmdName, bot, args, cmdData);
+                        String[] args = argsLine.split(" ");
+                        executor.execute(entry.getKey(), bot, args, cmdData);
                     }
                 }
                 break;
