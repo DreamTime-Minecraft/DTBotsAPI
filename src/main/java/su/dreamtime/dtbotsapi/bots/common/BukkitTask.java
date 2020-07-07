@@ -20,7 +20,7 @@ public class BukkitTask implements Task {
 
     @Override
     public void stop() {
-        if (bukkitTask != null || isCancelled()) {
+        if (bukkitTask != null && !isCancelled()) {
             bukkitTask.cancel();
         }
     }

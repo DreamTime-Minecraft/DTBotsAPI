@@ -65,8 +65,8 @@ public abstract class BotClient implements AutoCloseable, Runnable {
             DTBotsAPI.getLogger().warning("Cannot connect to remote server");
             e.printStackTrace();
         }
-        task.start(this);
         DTBotsAPI.addClient(this);
+        task.start(this);
     }
 
     /* Connection */
@@ -90,10 +90,6 @@ public abstract class BotClient implements AutoCloseable, Runnable {
 
     private void connect() throws Exception {
         synchronized (isConnecting) {
-            if (isConnecting.get()) {
-                return;
-            }
-            isConnecting.set(true);
 
             socket = new Socket(remoteIp, remotePort);
             socket.setSoTimeout(10000);
@@ -104,7 +100,6 @@ public abstract class BotClient implements AutoCloseable, Runnable {
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             sendRequest(new Command("CREATE_NAMED_CONNECTION", name));
             onConnect();
-            isConnecting.set(false);
         }
 
     }
@@ -113,9 +108,6 @@ public abstract class BotClient implements AutoCloseable, Runnable {
     @Override
     public final void run() {
         while (true) {
-            if (task.isCancelled() || close) {
-                return;
-            }
             try {
                 messageLock.lock();
                 String next;
@@ -125,16 +117,16 @@ public abstract class BotClient implements AutoCloseable, Runnable {
                         continue;
                     }
                     next = in.readLine();
-                    if (close) {
-                        break;
+                    if (task.isCancelled() || close) {
+                        return;
                     }
                     if (next == null) {
                         throw new NullPointerException();
                     }
                 }
                 catch (NullPointerException e) {
-                    if (task.isCancelled()) {
-                        break;
+                    if (task.isCancelled() || close) {
+                        return;
                     }
                     reconnect();
                     continue;
@@ -162,19 +154,13 @@ public abstract class BotClient implements AutoCloseable, Runnable {
                 if (e instanceof SocketTimeoutException) {
 
                 } else {
-                    if (e.getMessage().equalsIgnoreCase("Socket closed")) {
-                        return;
-                    }
                     e.printStackTrace();
                 }
             } finally {
                 messageLock.unlock();
                 try {
                     Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-
+                } catch (InterruptedException ignored) { }
             }
         }
     }
@@ -213,13 +199,13 @@ public abstract class BotClient implements AutoCloseable, Runnable {
     public final Map<String, Object> sendRequest(Command cmd) {
 
         sendLock.lock();
+        messageLock.lock();
         try {
             cmd.setResponse(true);
             String out = JsonParser.toJson(cmd);
             try {
                 this.out.write(out + "\n");
                 this.out.flush();
-                messageLock.lock();
                 String response = this.in.readLine();
 
                 if (response == null) {
@@ -265,8 +251,8 @@ public abstract class BotClient implements AutoCloseable, Runnable {
 
     public final void close(boolean removeClient) {
         try {
-            close = true;
             this.onClose();
+            close = true;
         } finally {
             try {
                 task.stop();
