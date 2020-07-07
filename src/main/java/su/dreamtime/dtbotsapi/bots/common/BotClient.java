@@ -251,8 +251,8 @@ public abstract class BotClient implements AutoCloseable, Runnable {
 
     public final void close(boolean removeClient) {
         try {
-            this.onClose();
             close = true;
+            this.onClose();
         } finally {
             try {
                 task.stop();

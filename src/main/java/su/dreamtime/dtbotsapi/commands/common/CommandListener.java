@@ -22,15 +22,17 @@ public class CommandListener
                     VkCommandData cmdData = JsonParser.parseJson(command.getData(), VkCommandData.class);
                     cmdData.setLine(Util.removeSpaces(cmdData.getLine()));
                     Map.Entry<String, VkCommandExecutor> entry = bot.getCommand(cmdData.getLine());
-                    String cmdName = entry.getKey();
                     if (entry != null) {
+                        String cmdName = entry.getKey();
                         VkCommandExecutor executor = entry.getValue();
 
                         String argsLine = cmdData.getLine().substring(cmdName.length());
-                        if (argsLine.startsWith(" ")) {
-                            argsLine = argsLine.substring(1);
-                        }
+                        argsLine = Util.removeSpaces(argsLine);
+
                         String[] args = argsLine.split(" ");
+                        if (args.length == 1 && args[0].length() == 0) {
+                            args = new String[0];
+                        }
                         executor.execute(entry.getKey(), bot, args, cmdData);
                     }
                 }
