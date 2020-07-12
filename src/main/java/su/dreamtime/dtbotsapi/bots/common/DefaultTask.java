@@ -29,6 +29,7 @@ public class DefaultTask implements Task {
         if (scheduledFuture != null && !scheduledFuture.isCancelled()) {
             scheduledFuture.cancel(false);
         }
+        service.shutdown();
         threadPool.shutdown();
     }
 
